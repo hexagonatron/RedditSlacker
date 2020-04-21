@@ -1,0 +1,17 @@
+{
+  "name": "redditbot",
+  "version": "1.0.0",
+  "description": "A bot that gets reddit posts and then posts them to slack",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Ben Fawcett",
+  "license": "ISC",
+  "dependencies": {
+    "btoa": "^1.2.1",
+    "dotenv": "^8.2.0",
+    "form-data": "^3.0.0",
+    "node-fetch": "^2.6.0"
+  }
+}
