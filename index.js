@@ -30,7 +30,7 @@ app.listen(PORT, ()=> {
 });
 
 app.get("/", (req, res) => {
-    console.log(req.ip);
+    console.log(req.headers);
     logRequest(req);
     res.status("200").send();
 })
