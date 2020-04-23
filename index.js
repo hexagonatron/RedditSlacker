@@ -37,7 +37,7 @@ app.get("/", (req, res) => {
 
 app.post("/subreddit", (req, res) => {
     res.status("200").send();
-    console.log(req);
+    console.log(req.body);
     fs.writeFile("./log/request.txt", JSON.stringify(req), (err)=> {
         if(err) console.log(err);
     });
