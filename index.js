@@ -5,14 +5,18 @@ const FormData = require("form-data");
 const express = require("express");
 const crypto = require("crypto");
 const fs = require("fs");
+const bodyParser = require("body-parser");
 
 const REDDIT_APP_ID = process.env.REDDIT_APP_ID;
 const REDDIT_APP_SECRET = process.env.REDDIT_APP_SECRET;
 const SLACK_TOKEN = process.env.SLACK_TOKEN;
+const SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET;
 
 const PORT = 3000;
 
 const app = express();
+
+const rawParser = bodyParser.text({type: "*/*"});
 
 //Logging FN
 const logRequest = (req) => {
@@ -25,6 +29,27 @@ const logRequest = (req) => {
     });
 }
 
+const verifyRequest = ({body, headers}) => {
+    console.log(body);
+    console.log(headers);
+
+    const reqTimestamp = headers['x-slack-request-timestamp'];
+    const reqSig = headers['x-slack-signature'];
+    const baseStr = `v0:${reqTimestamp}:${body}`;
+    
+    const timeDiff = new Date().getTime() / 1000 - reqTimestamp;
+
+    //If request is more than 5 mins old could be replay attack so do nothing
+    if(timeDiff > (60*5)) return false
+    
+
+    const hmac = crypto.createHmac('sha256', SLACK_SIGNING_SECRET);
+    hmac.update(baseStr);
+    console.log("v0="+hmac.digest('hex'));
+    console.log(reqSig);
+    
+}
+
 app.listen(PORT, ()=> {
     console.log(`Server started on ${PORT}`);
 });
@@ -35,14 +60,12 @@ app.get("/", (req, res) => {
     res.status("200").send();
 })
 
-app.post("/subreddit", (req, res) => {
+app.post("/subreddit", rawParser, (req, res) => {
     res.status("200").send();
-    console.log(req.body);
-    fs.writeFile("./log/request.txt", JSON.stringify(req), (err)=> {
-        if(err) console.log(err);
-    });
+    if(verifyRequest(req)){
 
-});
+    }
+})
 
 // const body = new FormData();
 // body.append("grant_type", "client_credentials");
