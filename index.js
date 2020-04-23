@@ -2,7 +2,9 @@ const fetch = require("node-fetch");
 const btoa = require('btoa');
 require('dotenv').config();
 const FormData = require("form-data");
-const express = require("express")
+const express = require("express");
+const crypto = require("crypto");
+const fs = require("fs");
 
 const REDDIT_APP_ID = process.env.REDDIT_APP_ID;
 const REDDIT_APP_SECRET = process.env.REDDIT_APP_SECRET;
@@ -12,13 +14,30 @@ const PORT = 3000;
 
 const app = express();
 
+//Logging FN
+const logRequest = (req) => {
+    const date = new Date().toISOString();
+    const logStr = `${date}: ${req.method} request for "${req.originalUrl}" from ${req.ip}\n`;
+    const filePath = "./log/log.txt";
+
+    fs.appendFile(filePath, logStr, (err) => {
+        if(err) console.log(err);
+    });
+}
+
 app.listen(PORT, ()=> {
     console.log(`Server started on ${PORT}`);
 });
 
 app.get("/", (req, res) => {
-    res.send("Hello!");
+    console.log(req.ip);
+    logRequest(req);
+    res.status("200").send();
 })
+
+app.post("/slack_event", (req, res) => {
+    res.send();
+});
 
 // const body = new FormData();
 // body.append("grant_type", "client_credentials");
