@@ -30,13 +30,18 @@ app.listen(PORT, ()=> {
 });
 
 app.get("/", (req, res) => {
-    console.log(req.headers);
+    console.log(req.headers.host);
     logRequest(req);
     res.status("200").send();
 })
 
-app.post("/slack_event", (req, res) => {
-    res.send();
+app.post("/subreddit", (req, res) => {
+    res.status("200").send();
+    console.log(req);
+    fs.writeFile("./log/request.txt", JSON.stringify(req), (err)=> {
+        if(err) console.log(err);
+    });
+
 });
 
 // const body = new FormData();
