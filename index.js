@@ -16,7 +16,7 @@ const PORT = 3000;
 
 const app = express();
 
-const rawParser = bodyParser.text({type: "*/*"});
+const jsonParser = express.urlencoded({ extended: true, type: "*/*" });
 
 //Logging FN
 const logRequest = (req) => {
@@ -25,32 +25,158 @@ const logRequest = (req) => {
     const filePath = "./log/log.txt";
 
     fs.appendFile(filePath, logStr, (err) => {
-        if(err) console.log(err);
+        if (err) console.log(err);
     });
 }
 
-const verifyRequest = ({body, headers}) => {
-    console.log(body);
-    console.log(headers);
+const verifyRequest = ({ body, headers }) => {
+
+    const bodyStr = new URLSearchParams(body).toString();
 
     const reqTimestamp = headers['x-slack-request-timestamp'];
     const reqSig = headers['x-slack-signature'];
-    const baseStr = `v0:${reqTimestamp}:${body}`;
-    
+    const baseStr = `v0:${reqTimestamp}:${bodyStr}`;
+
     const timeDiff = new Date().getTime() / 1000 - reqTimestamp;
 
     //If request is more than 5 mins old could be replay attack so do nothing
-    if(timeDiff > (60*5)) return false
-    
+    if (timeDiff > (60 * 5)) return false
 
+    //Calculate signed secret and compare to received sig returns true if the same
     const hmac = crypto.createHmac('sha256', SLACK_SIGNING_SECRET);
     hmac.update(baseStr);
-    console.log("v0="+hmac.digest('hex'));
-    console.log(reqSig);
-    
+    hmacDigest = "v0=" + hmac.digest('hex');
+    return crypto.timingSafeEqual(Buffer.from(hmacDigest), Buffer.from(reqSig));
 }
 
-app.listen(PORT, ()=> {
+const getRedditToken = () => {
+    const body = new FormData();
+    body.append("grant_type", "client_credentials");
+
+    return fetch("https://www.reddit.com/api/v1/access_token", {
+        method: "POST",
+        headers: {
+            'Authorization': 'Basic ' + btoa(`${REDDIT_APP_ID}:${REDDIT_APP_SECRET}`),
+            "User-Agent": "Script slackbot by hexagonatron",
+        },
+        body: body
+    })
+        .then(response => {
+            return response.json();
+        })
+        .then(json => {
+            return json.access_token;
+        });
+}
+
+const queryReddit = (subreddit, timeFrame = "day") => {
+    return new Promise((res, rej) => {
+        getRedditToken()
+            .then(token => {
+
+                const url = `https://oauth.reddit.com/r/${subreddit}/top/?sort=top&t=${timeFrame}`
+
+                return fetch(url, {
+                    method: "GET",
+                    headers: {
+                        "Authorization": "bearer " + token
+                    }
+                });
+            })
+            .then(response => {
+                return response.json();
+            })
+            .then(json => {
+                res(json.data.children);
+            })
+            .catch(err => {
+                rej(err);
+            });
+    });
+}
+
+const createResponse = (post, userID) => {
+    console.log(post);
+    if (post.is_self){
+
+        return JSON.stringify([
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": `*${post.title}*`
+                    }
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "markdwn",
+                        "text": post.selftext,
+                        "emoji": true
+                    }
+                },
+                {
+                    "type": "context",
+                    "elements": [
+                        {
+                            "type": "mrkdwn",
+                            "text": `Bot called by <@${userID}>`
+                        }
+                    ]
+                }
+            ]);
+    
+
+
+    } else {
+        return `[
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "*${post.title}*"
+                    }
+                },
+                {
+                    "type": "image",
+                    "image_url": "${post.url}",
+                    "alt_text": "image1"
+                },
+                {
+                    "type": "context",
+                    "elements": [
+                        {
+                            "type": "mrkdwn",
+                            "text": "Bot called by <@${userID}>"
+                        }
+                    ]
+                }
+            ]`
+    }
+}
+
+const postToSlack = (block, channel) => {
+    fetch("https://slack.com/api/chat.postMessage", {
+        method: "POST",
+        headers: {
+            "Content-type": "application/json; charset=utf-8",
+            "Authorization": "Bearer " + SLACK_TOKEN
+        },
+        body: JSON.stringify({
+            channel: channel,
+            text: "Sending from NodeJS =D",
+            blocks: block
+        })
+    })
+        .then(response => {
+            return response.json()
+        })
+        .then(json => {
+            console.log(json);
+        })
+}
+
+app.listen(PORT, () => {
     console.log(`Server started on ${PORT}`);
 });
 
@@ -60,11 +186,31 @@ app.get("/", (req, res) => {
     res.status("200").send();
 })
 
-app.post("/subreddit", rawParser, (req, res) => {
+app.post("/subreddit", jsonParser, (req, res) => {
     res.status("200").send();
-    if(verifyRequest(req)){
 
+    //if not a valid request then do nothing.
+    if (!verifyRequest(req)) {
+        return
     }
+
+    const { body } = req;
+
+    const optionsArray = body.text.split(' ');
+    const subreddit = optionsArray[0];
+    const timeFrame = optionsArray[1]? optionsArray[1]: "day";
+
+    queryReddit(subreddit, timeFrame)
+        .then(posts => {
+            const randPost = posts[Math.floor(Math.random() * posts.length )];
+            console.log(randPost);
+            const slackResponse = createResponse(randPost.data, body.user_id);
+            
+            console.log(slackResponse);
+
+            postToSlack(slackResponse, body.channel_id);
+        });
+
 })
 
 // const body = new FormData();
