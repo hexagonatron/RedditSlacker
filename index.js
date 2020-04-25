@@ -7,6 +7,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const bodyParser = require("body-parser");
 
+//Load env variables
 const REDDIT_APP_ID = process.env.REDDIT_APP_ID;
 const REDDIT_APP_SECRET = process.env.REDDIT_APP_SECRET;
 const SLACK_TOKEN = process.env.SLACK_TOKEN;
@@ -18,17 +19,18 @@ const app = express();
 
 const jsonParser = express.urlencoded({ extended: true, type: "*/*" });
 
-//Logging FN
-const logRequest = (req) => {
-    const date = new Date().toISOString();
-    const logStr = `${date}: ${req.method} request for "${req.originalUrl}" from ${req.ip}\n`;
-    const filePath = "./log/log.txt";
+//Logging FN - Not used anymore
+// const logRequest = (req) => {
+//     const date = new Date().toISOString();
+//     const logStr = `${date}: ${req.method} request for "${req.originalUrl}" from ${req.ip}\n`;
+//     const filePath = "./log/log.txt";
 
-    fs.appendFile(filePath, logStr, (err) => {
-        if (err) console.log(err);
-    });
-}
+//     fs.appendFile(filePath, logStr, (err) => {
+//         if (err) console.log(err);
+//     });
+// }
 
+//Function to verify if the slack request is legit
 const verifyRequest = ({ body, headers }) => {
 
     const bodyStr = new URLSearchParams(body).toString();
@@ -49,6 +51,7 @@ const verifyRequest = ({ body, headers }) => {
     return crypto.timingSafeEqual(Buffer.from(hmacDigest), Buffer.from(reqSig));
 }
 
+//Gets an oauth token from reddit
 const getRedditToken = () => {
     const body = new FormData();
     body.append("grant_type", "client_credentials");
@@ -69,6 +72,7 @@ const getRedditToken = () => {
         });
 }
 
+//Querys reddit for the provided parameters
 const queryReddit = (subreddit, timeFrame = "day") => {
     return new Promise((res, rej) => {
         getRedditToken()
@@ -87,11 +91,14 @@ const queryReddit = (subreddit, timeFrame = "day") => {
                 return response.json();
             })
             .then(json => {
-                console.log(json);
+                // console.log(json);
+
+                //If there's data then send it back for processing else reject with an error
                 if (json.data.children.length) res(json.data.children);
                 else rej("Cannot find any posts in your subreddit for the provided timeframe");
             })
             .catch(err => {
+                //To catch any other errors
                 rej(err);
             });
     });
@@ -195,6 +202,7 @@ const createResponse = (post, userID) => {
     }
 }
 
+//Create an error response
 const createError = (error, userID) => {
     return JSON.stringify([
         {
@@ -216,6 +224,7 @@ const createError = (error, userID) => {
     ]);
 }
 
+//Function to post formatted response to slack
 const postToSlack = (block, channel) => {
     fetch("https://slack.com/api/chat.postMessage", {
         method: "POST",
@@ -237,6 +246,7 @@ const postToSlack = (block, channel) => {
         })
 }
 
+//Init app
 app.listen(PORT, () => {
     console.log(`Server started on ${PORT}`);
 });
@@ -248,6 +258,8 @@ app.listen(PORT, () => {
 // })
 
 app.post("/subreddit", jsonParser, (req, res) => {
+
+    //Respond to request with a 200
     res.status("200").send();
 
     //if not a valid request then do nothing.
@@ -255,26 +267,33 @@ app.post("/subreddit", jsonParser, (req, res) => {
         return
     }
 
+    //extract request body
     const { body } = req;
 
+    //Get parameters
     const optionsArray = body.text.split(' ');
     const subreddit = optionsArray[0]?optionsArray[0]: "funny" ;
     const timeFrame = optionsArray[1]? optionsArray[1]: "day";
 
+    //Query reddit for posts from subreddit in timeframe
     queryReddit(subreddit, timeFrame)
         .then(posts => {
-            console.log(`Count: ${posts.length}`);
+            //Select a random post from list
             const randPost = posts[Math.floor(Math.random() * posts.length )];
-            console.log(randPost);
+            // console.log(randPost);
+
+            //Construct slack response from the post
             const slackResponse = createResponse(randPost.data, body.user_id);
             
-            console.log(slackResponse);
+            // console.log(slackResponse);
 
+            //Post formatted response to slack
             postToSlack(slackResponse, body.channel_id);
         })
         .catch(error => {
+            //If there's an error create an error response and send that to slack
             const slackResponse = createError(error, body.user_id);
-            console.log(slackResponse);
+            // console.log(slackResponse);
 
             postToSlack(slackResponse, body.channel_id);
         });
