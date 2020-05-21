@@ -13,6 +13,9 @@ const REDDIT_APP_SECRET = process.env.REDDIT_APP_SECRET;
 const SLACK_TOKEN = process.env.SLACK_TOKEN;
 const SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET;
 
+//Load lib
+const Block = require("./lib/classes/Block");
+
 const PORT = 3000;
 
 const app = express();
@@ -225,8 +228,11 @@ const createError = (error, userID) => {
 }
 
 //Function to post formatted response to slack
-const postToSlack = (block, channel) => {
-    fetch("https://slack.com/api/chat.postMessage", {
+const postToSlack = (block, channel, response_url, replace_original) => {
+
+    const url = response_url? response_url:"https://slack.com/api/chat.postMessage"; 
+
+    return fetch(url, {
         method: "POST",
         headers: {
             "Content-type": "application/json; charset=utf-8",
@@ -235,27 +241,32 @@ const postToSlack = (block, channel) => {
         body: JSON.stringify({
             channel: channel,
             text: "Sending from NodeJS =D",
-            blocks: block
+            blocks: block,
+            replace_original: replace_original
         })
+    }).then(response => {
+        return response.json()
+    }).then(json => {
+        // console.log(json);
+
+        return json;
     })
-        .then(response => {
-            return response.json()
-        })
-        .then(json => {
-            console.log(json);
-        })
 }
+
+const findPrompt = (id) => {
+    for(let promptObject of roomPromptCollection){
+        if(promptObject.id == id){
+            return promptObject;
+        }
+    }
+}
+
+
 
 //Init app
 app.listen(PORT, () => {
     console.log(`Server started on ${PORT}`);
 });
-
-// app.get("/", (req, res) => {
-//     console.log(req.headers.host);
-//     logRequest(req);
-//     res.status("200").send();
-// })
 
 app.post("/subreddit", jsonParser, (req, res) => {
 
@@ -299,3 +310,53 @@ app.post("/subreddit", jsonParser, (req, res) => {
         });
 
 });
+
+const roomPromptCollection = [];
+
+app.post("/whichroom", jsonParser, (req, res)=> {
+    
+    res.status("200").send();
+
+    //if not a valid request then do nothing.
+    if (!verifyRequest(req)) return;
+
+    const {body: {channel_id, user_id, user_name, command, response_url}} = req;
+
+    const user = {
+        id: user_id,
+        name: user_name
+    }
+
+    const block = new Block(user);
+    roomPromptCollection.push(block);
+
+    postToSlack(block.toString(), channel_id).then(res => {
+        console.log(res.message.blocks);
+    });
+
+
+
+
+})
+
+app.post("/", jsonParser, (req, res) => {
+    res.status("200").send();
+    const payload = JSON.parse(req.body.payload);
+
+
+    const promptId = payload.message.blocks[0].block_id;
+    const user = {
+        id: payload.user.id,
+        name: payload.user.name
+    }
+    const actions = payload.actions;
+    const channel = payload.channel.id;
+    const response_url = payload.response_url;
+
+    const block = findPrompt(promptId);
+
+    block.addToRoom(user, actions[0].value);
+
+    postToSlack(block.toString(), channel, response_url, true);
+
+})
