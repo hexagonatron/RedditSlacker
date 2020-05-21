@@ -343,6 +343,7 @@ app.post("/", jsonParser, (req, res) => {
     res.status("200").send();
     const payload = JSON.parse(req.body.payload);
 
+    console.log(payload);
 
     const promptId = payload.message.blocks[0].block_id;
     const user = {
